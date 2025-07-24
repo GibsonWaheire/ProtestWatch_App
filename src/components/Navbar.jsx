@@ -17,10 +17,6 @@ function Navbar() {
       <Link to="/" className={linkClass('/')}>Dashboard</Link>
       <Link to="/events" className={linkClass('/events')}>Events</Link>
       <Link to="/report" className={linkClass('/report')}>Report</Link>
-      <div className="ml-auto flex gap-4 items-center">
-        <Link to="/login" className="btn">Login</Link>
-        <Link to="/register" className="btn">Register</Link>
-      </div>
     </nav>
   );
 }

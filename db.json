@@ -1,5 +1,50 @@
 {
-    "protests": [],
-    "arrests": [],
-    "reports": []
-  }
+  "protests": [
+    {
+      "id": 1,
+      "title": "Nairobi CBD Protest",
+      "location": "Nairobi",
+      "status": "Active",
+      "date": "2024-07-01"
+    },
+    {
+      "id": 2,
+      "title": "Mombasa March",
+      "location": "Mombasa",
+      "status": "Ended",
+      "date": "2024-06-28"
+    }
+  ],
+  "arrests": [
+    {
+      "id": 1,
+      "protestId": 1,
+      "name": "John Doe",
+      "reason": "Unlawful assembly",
+      "date": "2024-07-01"
+    },
+    {
+      "id": 2,
+      "protestId": 2,
+      "name": "Jane Smith",
+      "reason": "Disturbing the peace",
+      "date": "2024-06-28"
+    }
+  ],
+  "reports": [
+    {
+      "id": 1,
+      "protestId": 1,
+      "reporter": "alice@example.com",
+      "description": "Police used tear gas to disperse the crowd.",
+      "date": "2024-07-01"
+    },
+    {
+      "id": 2,
+      "protestId": 2,
+      "reporter": "bob@example.com",
+      "description": "Protest ended peacefully.",
+      "date": "2024-06-28"
+    }
+  ]
+}

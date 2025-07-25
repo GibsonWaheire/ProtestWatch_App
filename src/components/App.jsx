@@ -13,20 +13,30 @@ import React from 'react';
 
 function App() {
   const [alertMsg, setAlertMsg] = useState("");
+  const [showAlert, setShowAlert] = useState(false);
 
   // Listen for showAlert events
   React.useEffect(() => {
     const handler = (e) => {
-      if (e.detail && e.detail.message) setAlertMsg(e.detail.message);
+      if (e.detail && e.detail.message) {
+        setAlertMsg(e.detail.message);
+        setShowAlert(true);
+      }
     };
     window.addEventListener("showAlert", handler);
     return () => window.removeEventListener("showAlert", handler);
   }, []);
 
+  const handleAlertClose = () => setShowAlert(false);
+
   return (
     <Router>
       <div className="min-h-screen bg-gray-50">
-        {alertMsg && <Alert message={alertMsg} />}
+        {showAlert && (
+          <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-md">
+            <Alert message={alertMsg} onClose={handleAlertClose} />
+          </div>
+        )}
         <Navbar />
         <main className="p-4">
           <Routes>

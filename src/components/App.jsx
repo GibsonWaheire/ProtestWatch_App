@@ -8,9 +8,20 @@ import Login from './Login.jsx';
 import Register from './Register.jsx';
 import { useState } from 'react';
 import Alert from './Alert.jsx';
+import ReportForm from './Reports.jsx';
+import React from 'react';
 
 function App() {
   const [alertMsg, setAlertMsg] = useState("");
+
+  // Listen for showAlert events
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (e.detail && e.detail.message) setAlertMsg(e.detail.message);
+    };
+    window.addEventListener("showAlert", handler);
+    return () => window.removeEventListener("showAlert", handler);
+  }, []);
 
   return (
     <Router>
@@ -21,7 +32,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/events" element={<Events />} />
-            <Route path="/report" element={<Report />} />
+            <Route path="/report" element={<ReportForm />} />
             <Route path="/login" element={<Login setAlertMsg={setAlertMsg} />} />
             <Route path="/register" element={<Register setAlertMsg={setAlertMsg} />} />
           </Routes>

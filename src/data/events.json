@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,
+    "title": "Nairobi CBD Protest",
+    "location": "Nairobi",
+    "status": "Active",
+    "date": "2025-07-22"
+  },
+  {
+    "id": 2,
+    "title": "Mombasa March",
+    "location": "Mombasa",
+    "status": "Ended",
+    "date": "2025-07-20"
+  },
+  {
+    "id": 3,
+    "title": "Kisumu Rally",
+    "location": "Kisumu",
+    "status": "Upcoming",
+    "date": "2025-07-30"
+  },
+  {
+    "id": 4,
+    "title": "Eldoret Civic Parade",
+    "location": "Eldoret",
+    "status": "Active",
+    "date": "2025-08-01"
+  },
+  {
+    "id": 5,
+    "title": "Thika Awareness March",
+    "location": "Thika",
+    "status": "Upcoming",
+    "date": "2025-08-03"
+  }
+]

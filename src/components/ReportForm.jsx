@@ -86,4 +86,4 @@ const ReportForm = () => {
   );
 };
 
-export default ReportForm;
+export default ReportingObserver;

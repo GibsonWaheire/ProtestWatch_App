@@ -1,6 +1,7 @@
 // src/components/Events.jsx
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import eventsData from "../data/events.json";
+import { useSearchParams } from "react-router-dom";
 
 // Helper to get initials for avatar
 function getInitials(text) {
@@ -11,19 +12,319 @@ function getInitials(text) {
     .slice(0, 2);
 }
 
+// Helper to format timestamps
+function formatTimestamp(timestamp) {
+  const now = new Date();
+  const diff = now - new Date(timestamp);
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min${minutes !== 1 ? 's' : ''} ago`;
+  if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+  if (days < 7) return `${days} day${days !== 1 ? 's' : ''} ago`;
+  
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric'
+  }).format(new Date(timestamp));
+}
+
+// Helper to generate unique ID
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
 function getAllEvents() {
-  // Merge static and localStorage events, dedupe by id
   const local = JSON.parse(localStorage.getItem("events") || "[]");
   const staticEvents = eventsData.map(e => ({ ...e, opinions: e.opinions || [] }));
   const all = [...local, ...staticEvents.filter(e => !local.some(ev => ev.id === e.id))];
   return all;
 }
 
+// Helper to get opinions from localStorage
+function getOpinionsFromStorage(eventId) {
+  try {
+    const stored = localStorage.getItem(`opinions-event-${eventId}`);
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('Error loading opinions from localStorage:', error);
+    return [];
+  }
+}
+
+// Helper to save opinions to localStorage
+function saveOpinionsToStorage(eventId, opinions) {
+  try {
+    localStorage.setItem(`opinions-event-${eventId}`, JSON.stringify(opinions));
+  } catch (error) {
+    console.error('Error saving opinions to localStorage:', error);
+  }
+}
+
+// Separate OpinionModal component to prevent re-renders
+function OpinionModal({ open, onClose, event, onSubmit }) {
+  const [opinionText, setOpinionText] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [localOpinions, setLocalOpinions] = useState([]);
+
+  // Load opinions from localStorage when modal opens
+  useEffect(() => {
+    if (open && event) {
+      const storedOpinions = getOpinionsFromStorage(event.id);
+      setLocalOpinions(storedOpinions);
+    }
+  }, [open, event]);
+
+  // Reset form when modal opens/closes
+  useEffect(() => {
+    if (!open) {
+      setOpinionText("");
+      setIsSubmitting(false);
+      setShowSuccess(false);
+      setLocalOpinions([]);
+    }
+  }, [open]);
+
+  // Handle ESC key to close modal
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape' && open) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [open, onClose]);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [open]);
+
+  const handleSubmit = async () => {
+    if (!opinionText.trim()) return;
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Create new opinion with unique ID and timestamp
+      const newOpinion = {
+        id: generateId(),
+        content: opinionText.trim(),
+        timestamp: new Date().toISOString(),
+        eventId: event.id
+      };
+
+      // Add to local state immediately for instant UI update
+      const updatedOpinions = [...localOpinions, newOpinion];
+      setLocalOpinions(updatedOpinions);
+      
+      // Save to localStorage
+      saveOpinionsToStorage(event.id, updatedOpinions);
+      
+      // Call parent handler
+      await onSubmit(event.id, opinionText);
+      
+      setOpinionText("");
+      setShowSuccess(true);
+      
+      // Hide success message after 3 seconds
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (error) {
+      console.error('Error submitting opinion:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClose = () => {
+    setOpinionText("");
+    onClose();
+  };
+
+  // Get total opinion count (local + original event opinions)
+  const totalOpinions = localOpinions.length + (event?.opinions?.length || 0);
+
+  if (!open || !event) return null;
+    
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-gray-500 bg-opacity-50 transition-opacity duration-300"
+        onClick={handleClose}
+      />
+      
+      {/* Modal Content */}
+      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-fade-in-up">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">{event.title}</h3>
+            <p className="text-sm text-gray-500 mt-1">{event.location} • {event.date}</p>
+          </div>
+          <button
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            onClick={handleClose}
+            aria-label="Close modal"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+          {/* Status Badge */}
+          <div className="mb-6">
+            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+              event.status === 'Active' 
+                ? 'bg-green-100 text-green-700 border border-green-200' 
+                : event.status === 'Upcoming' 
+                ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' 
+                : 'bg-gray-100 text-gray-600 border border-gray-200'
+            }`}>
+              {event.status === 'Active' && (
+                <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              )}
+              {event.status || 'Reported'}
+            </span>
+          </div>
+
+          {/* Existing Opinions */}
+          <div className="mb-6">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">
+              Opinions ({totalOpinions})
+            </h4>
+            {totalOpinions > 0 ? (
+              <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                {/* Show original event opinions first */}
+                {event.opinions?.map((opinion, idx) => (
+                  <div key={`original-${idx}`} className="flex items-start gap-3 bg-gray-50 rounded-lg p-4">
+                    <div className="flex-shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <span className="text-blue-700 font-semibold text-sm">
+                          {getInitials(opinion)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-gray-800 text-sm leading-relaxed">{opinion}</p>
+                      <p className="text-gray-400 text-xs mt-1">Original opinion</p>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Show local opinions */}
+                {localOpinions.map((opinion) => (
+                  <div key={opinion.id} className="flex items-start gap-3 bg-blue-50 rounded-lg p-4 border border-blue-100">
+                    <div className="flex-shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center">
+                        <span className="text-blue-800 font-semibold text-sm">
+                          {getInitials(opinion.content)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-gray-800 text-sm leading-relaxed">{opinion.content}</p>
+                      <p className="text-gray-500 text-xs mt-1">
+                        {formatTimestamp(opinion.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <p className="text-gray-500">No opinions yet. Be the first to share your thoughts!</p>
+              </div>
+            )}
+          </div>
+
+          {/* Add Opinion Form */}
+          <div className="border-t border-gray-100 pt-6">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Add Your Opinion</h4>
+            <div className="space-y-4">
+              <textarea
+                value={opinionText}
+                onChange={(e) => setOpinionText(e.target.value)}
+                placeholder="Share your thoughts about this event..."
+                className="w-full h-32 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                maxLength={500}
+                spellCheck={false}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">
+                  {opinionText.length}/500 characters
+                </span>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleClose}
+                    className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!opinionText.trim() || isSubmitting}
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Submitting...
+                      </>
+                    ) : (
+                      'Submit Opinion'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="fixed top-4 right-4 z-60 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg animate-fade-in-up">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            Opinion submitted successfully!
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Events() {
   const [events, setEvents] = useState(getAllEvents());
   const [selectedEventId, setSelectedEventId] = useState(null);
-  const [opinionText, setOpinionText] = useState("");
-  const inputRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Listen for real-time updates
   useEffect(() => {
@@ -31,6 +332,20 @@ function Events() {
     window.addEventListener("eventsUpdated", update);
     return () => window.removeEventListener("eventsUpdated", update);
   }, []);
+
+  // Handle URL parameter for auto-opening modal
+  useEffect(() => {
+    const eventIdFromUrl = searchParams.get('eventId');
+    if (eventIdFromUrl) {
+      // Check if the event exists
+      const eventExists = events.find(e => e.id === eventIdFromUrl);
+      if (eventExists) {
+        setSelectedEventId(eventIdFromUrl);
+        // Clear the URL parameter after opening the modal
+        setSearchParams({});
+      }
+    }
+  }, [searchParams, events, setSearchParams]);
 
   // Separate upcoming and past events
   const now = new Date();
@@ -41,130 +356,179 @@ function Events() {
     (e) => new Date(e.date) < now
   );
 
-  // Scroll to input when modal opens
-  useEffect(() => {
-    if (selectedEventId && inputRef.current) {
-      inputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      inputRef.current.focus();
-    }
-  }, [selectedEventId]);
+  // Get total opinions count for an event (including localStorage)
+  const getTotalOpinionsForEvent = useCallback((eventId) => {
+    const localOpinions = getOpinionsFromStorage(eventId);
+    const event = events.find(e => e.id === eventId);
+    return (event?.opinions?.length || 0) + localOpinions.length;
+  }, [events]);
 
-  const handleAddOpinion = (eventId) => {
-    if (!opinionText.trim()) return;
-    const updatedEvents = events.map((event) => {
-      if (event.id === eventId) {
-        return {
-          ...event,
-          opinions: [...event.opinions, opinionText],
-        };
-      }
-      return event;
+  // Memoized opinion submission handler
+  const handleAddOpinion = useCallback(async (eventId, opinionText) => {
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Update events state immediately to show real-time count change
+    setEvents(prevEvents => {
+      const updatedEvents = prevEvents.map((event) => {
+        if (event.id === eventId) {
+          return {
+            ...event,
+            opinions: [...event.opinions, opinionText],
+          };
+        }
+        return event;
+      });
+      
+      // Dispatch event for other components
+      window.dispatchEvent(new CustomEvent("eventsUpdated"));
+      
+      return updatedEvents;
     });
-    setEvents(updatedEvents);
-    setOpinionText("");
-  };
+  }, []);
 
-  // Modal component
-  function Modal({ open, onClose, children }) {
-    if (!open) return null;
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 transition-opacity animate-fadeIn">
-        <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md relative animate-slideUp">
-          <button
-            className="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-2xl font-bold"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-          {children}
-        </div>
-      </div>
-    );
-  }
+  const handleCloseModal = useCallback(() => {
+    setSelectedEventId(null);
+  }, []);
 
-  // Card for each event
+  // Enhanced Event Card component
   function EventCard({ event }) {
-    const isOpen = selectedEventId === event.id;
+    const totalOpinions = getTotalOpinionsForEvent(event.id);
+    
     return (
-      <div className={`relative bg-gradient-to-br from-blue-50 to-white border border-blue-200 rounded-2xl shadow-lg p-6 transition-transform duration-300 hover:scale-105`}> 
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xl font-bold text-blue-700">{event.title}</span>
-          <span className="ml-2 bg-blue-500 text-white text-xs font-semibold px-2 py-1 rounded-full">{event.opinions.length}</span>
+      <div className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 overflow-hidden group hover-lift">
+        <div className="p-6">
+          {/* Header with status */}
+          <div className="flex items-start justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 leading-tight line-clamp-2">
+              {event.title}
+            </h3>
+            <span className={`px-2 py-1 rounded-full text-xs font-semibold flex items-center ml-2 flex-shrink-0 ${
+              event.status === 'Active' 
+                ? 'bg-green-100 text-green-700 border border-green-200' 
+                : event.status === 'Upcoming' 
+                ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' 
+                : 'bg-gray-100 text-gray-600 border border-gray-200'
+            }`}>
+              {event.status === 'Active' && (
+                <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              )}
+              {event.status || 'Reported'}
+            </span>
+          </div>
+
+          {/* Event details */}
+          <div className="space-y-3 text-sm text-gray-600 mb-4">
+            <div className="flex items-center">
+              <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              {event.location}
+            </div>
+            <div className="flex items-center">
+              <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              {event.date}
+            </div>
+            <div className="flex items-center">
+              <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <span className="font-medium text-gray-700">
+                {totalOpinions} opinion{totalOpinions !== 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+
+          {/* Description */}
+          {event.description && (
+            <p className="text-gray-700 text-sm mb-4 line-clamp-3 leading-relaxed">
+              {event.description}
+            </p>
+          )}
+
+          {/* Action button */}
+          <button
+            onClick={() => setSelectedEventId(event.id)}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            View Opinions
+          </button>
         </div>
-        <div className="text-blue-500 text-sm mb-1">{event.location}</div>
-        <div className="text-gray-500 text-xs mb-1">{event.date}</div>
-        <div className="text-gray-600 text-xs mb-2">Status: <span className={event.status === 'Active' ? 'text-green-600' : event.status === 'Upcoming' ? 'text-yellow-600' : 'text-gray-400'}>{event.status}</span></div>
-        <button
-          className="w-full mt-2 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
-          onClick={() => setSelectedEventId(event.id)}
-        >
-          View Opinions
-        </button>
-        <Modal open={isOpen} onClose={() => setSelectedEventId(null)}>
-          <h3 className="font-bold text-lg mb-3 text-center text-blue-700">Opinions for {event.title}</h3>
-          <div className="flex flex-col gap-2 mb-4 max-h-40 overflow-y-auto">
-            {event.opinions.length > 0 ? (
-              event.opinions.map((opinion, idx) => (
-                <div key={idx} className="flex items-center gap-2 bg-blue-50 rounded-lg px-3 py-2">
-                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-200 text-blue-800 font-bold text-sm">
-                    {getInitials(opinion)}
-                  </span>
-                  <span className="text-gray-800 text-sm">{opinion}</span>
-                </div>
-              ))
-            ) : (
-              <span className="text-gray-400 text-center">No opinions yet.</span>
-            )}
-          </div>
-          <div className="flex gap-2 mt-2">
-            <input
-              ref={inputRef}
-              type="text"
-              value={opinionText}
-              onChange={(e) => setOpinionText(e.target.value)}
-              placeholder="Add your opinion..."
-              className="border border-blue-300 p-2 rounded w-40 focus:outline-none focus:ring-2 focus:ring-blue-400"
-              onKeyDown={e => { if (e.key === 'Enter') handleAddOpinion(event.id); }}
-            />
-            <button
-              onClick={() => handleAddOpinion(event.id)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold transition-colors"
-            >
-              Submit
-            </button>
-          </div>
-        </Modal>
       </div>
     );
   }
 
   return (
-    <div className="p-6 min-h-screen bg-gradient-to-br from-blue-100 to-white">
-      <h2 className="text-4xl font-extrabold italic text-center text-blue-800 mb-8 drop-shadow">Events</h2>
-      <div className="mb-10">
-        <h3 className="text-2xl font-bold text-blue-700 mb-4">Upcoming Events</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          {upcomingEvents.length > 0 ? upcomingEvents.map(event => (
-            <EventCard key={event.id} event={event} />
-          )) : <span className="text-gray-500">No upcoming events.</span>}
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header Section */}
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Events</h2>
+          <p className="text-gray-500">Browse and interact with protest events</p>
         </div>
-      </div>
-      <div>
-        <h3 className="text-2xl font-bold text-gray-700 mb-4">Past Events</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          {pastEvents.length > 0 ? pastEvents.map(event => (
-            <EventCard key={event.id} event={event} />
-          )) : <span className="text-gray-400">No past events.</span>}
+
+        {/* Upcoming Events Section */}
+        <div className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-2xl font-semibold text-gray-900">Upcoming Events</h3>
+            <span className="text-sm text-gray-500">{upcomingEvents.length} event{upcomingEvents.length !== 1 ? 's' : ''}</span>
+          </div>
+          {upcomingEvents.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {upcomingEvents.map(event => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
+              <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p className="text-gray-500 text-lg">No upcoming events</p>
+              <p className="text-gray-400 text-sm mt-1">Check back later for new events</p>
+            </div>
+          )}
         </div>
+
+        {/* Past Events Section */}
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-2xl font-semibold text-gray-900">Past Events</h3>
+            <span className="text-sm text-gray-500">{pastEvents.length} event{pastEvents.length !== 1 ? 's' : ''}</span>
+          </div>
+          {pastEvents.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {pastEvents.map(event => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
+              <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              <p className="text-gray-500 text-lg">No past events</p>
+              <p className="text-gray-400 text-sm mt-1">Historical events will appear here</p>
+            </div>
+          )}
+        </div>
+
+        {/* Opinion Modal */}
+        <OpinionModal 
+          open={!!selectedEventId} 
+          onClose={handleCloseModal}
+          event={events.find(e => e.id === selectedEventId)}
+          onSubmit={handleAddOpinion}
+        />
       </div>
-      {/* Animations for modal */}
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .animate-fadeIn { animation: fadeIn 0.2s ease; }
-        @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .animate-slideUp { animation: slideUp 0.3s cubic-bezier(.4,2,.6,1); }
-      `}</style>
     </div>
   );
 }

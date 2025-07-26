@@ -9,15 +9,103 @@ function getAllEvents() {
   return all;
 }
 
-// Helper to get opinions from localStorage (same as Events page)
-function getOpinionsFromStorage(eventId) {
+// Helper to get opinions from API
+const API_BASE_URL = 'http://localhost:4000/api';
+
+async function getOpinionsFromAPI(eventId) {
   try {
-    const stored = localStorage.getItem(`opinions-event-${eventId}`);
-    return stored ? JSON.parse(stored) : [];
+    const response = await fetch(`${API_BASE_URL}/opinions/${eventId}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch opinions');
+    }
+    return await response.json();
   } catch (error) {
-    console.error('Error loading opinions from localStorage:', error);
+    console.error('Error loading opinions from API:', error);
     return [];
   }
+}
+
+// Dashboard Event Card Component
+function DashboardEventCard({ event, onCardClick, getTotalOpinionsForEvent }) {
+  const [totalOpinions, setTotalOpinions] = useState(event.opinions || 0);
+  
+  // Load opinions count when component mounts
+  useEffect(() => {
+    const loadOpinionsCount = async () => {
+      try {
+        const count = await getTotalOpinionsForEvent(event.id);
+        setTotalOpinions(count);
+      } catch (error) {
+        console.error('Error loading opinions count:', error);
+      }
+    };
+    loadOpinionsCount();
+  }, [event.id, getTotalOpinionsForEvent]);
+  
+  return (
+    <div 
+      className="group bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 hover:shadow-lg transition-all duration-300 hover:scale-[1.02] cursor-pointer"
+      onClick={() => onCardClick(event.id)}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <h5 className="font-semibold text-blue-900 text-sm leading-tight line-clamp-2">
+          {event.title || event.name}
+        </h5>
+        <span className={`px-2 py-1 rounded-full text-xs font-semibold flex items-center ml-2 flex-shrink-0 ${
+          event.status === 'Active' 
+            ? 'bg-green-100 text-green-700 border border-green-200' 
+            : event.status === 'Upcoming' 
+            ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' 
+            : 'bg-gray-100 text-gray-600 border border-gray-200'
+        }`}>
+          {event.status === 'Active' && (
+            <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+          )}
+          {event.status || 'Reported'}
+        </span>
+      </div>
+      
+      <div className="space-y-2 text-xs text-gray-600">
+        <div className="flex items-center">
+          <svg className="w-3 h-3 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          {event.location}
+        </div>
+        <div className="flex items-center">
+          <svg className="w-3 h-3 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          {event.date || event.datetime?.split('T')[0]}
+        </div>
+        <div className="flex items-center">
+          <svg className="w-3 h-3 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <span className="font-medium text-gray-700">
+            {totalOpinions} opinion{totalOpinions !== 1 ? 's' : ''}
+          </span>
+        </div>
+      </div>
+      
+      <p className="text-gray-700 text-xs mt-3 line-clamp-2 leading-relaxed">
+        {event.description}
+      </p>
+      
+      {/* Click indicator */}
+      <div className="mt-3 pt-2 border-t border-blue-200">
+        <div className="flex items-center justify-between text-xs text-blue-600">
+          <span>Click to view details</span>
+          <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const Dashboard = ({ user }) => {
@@ -50,11 +138,17 @@ const Dashboard = ({ user }) => {
       return 0;
     });
 
-  // Get total opinions count for an event (including localStorage)
-  const getTotalOpinionsForEvent = (eventId) => {
-    const localOpinions = getOpinionsFromStorage(eventId);
-    const event = events.find(e => e.id === eventId);
-    return (event?.opinions?.length || 0) + localOpinions.length;
+  // Get total opinions count for an event (including API)
+  const getTotalOpinionsForEvent = async (eventId) => {
+    try {
+      const apiOpinions = await getOpinionsFromAPI(eventId);
+      const event = events.find(e => e.id === eventId);
+      return (event?.opinions || 0) + apiOpinions.length;
+    } catch (error) {
+      console.error('Error getting total opinions:', error);
+      const event = events.find(e => e.id === eventId);
+      return event?.opinions || 0;
+    }
   };
 
   // Handle event card click - navigate to Events page with event ID
@@ -241,74 +335,14 @@ const Dashboard = ({ user }) => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {filteredAndSortedEvents.slice(0, 6).map(ev => {
-                    const totalOpinions = getTotalOpinionsForEvent(ev.id);
-                    return (
-                      <div 
-                        key={ev.id} 
-                        className="group bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 hover:shadow-lg transition-all duration-300 hover:scale-[1.02] cursor-pointer"
-                        onClick={() => handleEventCardClick(ev.id)}
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <h5 className="font-semibold text-blue-900 text-sm leading-tight line-clamp-2">
-                            {ev.title || ev.name}
-                          </h5>
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold flex items-center ml-2 flex-shrink-0 ${
-                            ev.status === 'Active' 
-                              ? 'bg-green-100 text-green-700 border border-green-200' 
-                              : ev.status === 'Upcoming' 
-                              ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' 
-                              : 'bg-gray-100 text-gray-600 border border-gray-200'
-                          }`}>
-                            {ev.status === 'Active' && (
-                              <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                              </svg>
-                            )}
-                            {ev.status || 'Reported'}
-                          </span>
-                        </div>
-                        
-                        <div className="space-y-2 text-xs text-gray-600">
-                          <div className="flex items-center">
-                            <svg className="w-3 h-3 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            {ev.location}
-                          </div>
-                          <div className="flex items-center">
-                            <svg className="w-3 h-3 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            {ev.date || ev.datetime?.split('T')[0]}
-                          </div>
-                          <div className="flex items-center">
-                            <svg className="w-3 h-3 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                            </svg>
-                            <span className="font-medium text-gray-700">
-                              {totalOpinions} opinion{totalOpinions !== 1 ? 's' : ''}
-                            </span>
-                          </div>
-                        </div>
-                        
-                        <p className="text-gray-700 text-xs mt-3 line-clamp-2 leading-relaxed">
-                          {ev.description}
-                        </p>
-                        
-                        {/* Click indicator */}
-                        <div className="mt-3 pt-2 border-t border-blue-200">
-                          <div className="flex items-center justify-between text-xs text-blue-600">
-                            <span>Click to view details</span>
-                            <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {filteredAndSortedEvents.slice(0, 6).map(ev => (
+                    <DashboardEventCard 
+                      key={ev.id} 
+                      event={ev} 
+                      onCardClick={handleEventCardClick}
+                      getTotalOpinionsForEvent={getTotalOpinionsForEvent}
+                    />
+                  ))}
                 </div>
               )}
             </div>

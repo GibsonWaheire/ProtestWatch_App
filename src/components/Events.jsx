@@ -3,6 +3,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import eventsData from "../data/events.json";
 import { useSearchParams } from "react-router-dom";
 
+// API base URL
+const API_BASE_URL = 'http://localhost:4000/api';
+
 // Helper to get initials for avatar
 function getInitials(text) {
   return text
@@ -45,25 +48,41 @@ function getAllEvents() {
   return all;
 }
 
-// Helper to get opinions from localStorage
-function getOpinionsFromStorage(eventId) {
+// Helper function to fetch opinions from API
+const fetchOpinionsFromAPI = async (eventId) => {
   try {
-    const stored = localStorage.getItem(`opinions-event-${eventId}`);
-    return stored ? JSON.parse(stored) : [];
+    const response = await fetch(`${API_BASE_URL}/opinions/${eventId}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch opinions');
+    }
+    return await response.json();
   } catch (error) {
-    console.error('Error loading opinions from localStorage:', error);
+    console.error('Error fetching opinions:', error);
     return [];
   }
-}
+};
 
-// Helper to save opinions to localStorage
-function saveOpinionsToStorage(eventId, opinions) {
+// Helper function to submit opinion to API
+const submitOpinionToAPI = async (eventId, comment) => {
   try {
-    localStorage.setItem(`opinions-event-${eventId}`, JSON.stringify(opinions));
+    const response = await fetch(`${API_BASE_URL}/opinions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ event_id: eventId, comment }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to submit opinion');
+    }
+    
+    return await response.json();
   } catch (error) {
-    console.error('Error saving opinions to localStorage:', error);
+    console.error('Error submitting opinion:', error);
+    throw error;
   }
-}
+};
 
 // Separate OpinionModal component to prevent re-renders
 function OpinionModal({ open, onClose, event, onSubmit }) {
@@ -72,11 +91,19 @@ function OpinionModal({ open, onClose, event, onSubmit }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [localOpinions, setLocalOpinions] = useState([]);
 
-  // Load opinions from localStorage when modal opens
+  // Load opinions from API when modal opens
   useEffect(() => {
     if (open && event) {
-      const storedOpinions = getOpinionsFromStorage(event.id);
-      setLocalOpinions(storedOpinions);
+      const loadOpinions = async () => {
+        try {
+          const apiOpinions = await fetchOpinionsFromAPI(event.id);
+          setLocalOpinions(apiOpinions);
+        } catch (error) {
+          console.error('Error loading opinions:', error);
+          setLocalOpinions([]);
+        }
+      };
+      loadOpinions();
     }
   }, [open, event]);
 
@@ -131,8 +158,8 @@ function OpinionModal({ open, onClose, event, onSubmit }) {
       const updatedOpinions = [...localOpinions, newOpinion];
       setLocalOpinions(updatedOpinions);
       
-      // Save to localStorage
-      saveOpinionsToStorage(event.id, updatedOpinions);
+      // Submit to API
+      await submitOpinionToAPI(event.id, opinionText);
       
       // Call parent handler
       await onSubmit(event.id, opinionText);
@@ -154,8 +181,8 @@ function OpinionModal({ open, onClose, event, onSubmit }) {
     onClose();
   };
 
-  // Get total opinion count (local + original event opinions)
-  const totalOpinions = localOpinions.length + (event?.opinions?.length || 0);
+  // Get total opinion count (API opinions + original event opinions)
+  const totalOpinions = localOpinions.length + (event?.opinions || 0);
 
   if (!open || !event) return null;
     
@@ -356,11 +383,17 @@ function Events() {
     (e) => new Date(e.date) < now
   );
 
-  // Get total opinions count for an event (including localStorage)
-  const getTotalOpinionsForEvent = useCallback((eventId) => {
-    const localOpinions = getOpinionsFromStorage(eventId);
-    const event = events.find(e => e.id === eventId);
-    return (event?.opinions?.length || 0) + localOpinions.length;
+  // Get total opinions count for an event (including API)
+  const getTotalOpinionsForEvent = useCallback(async (eventId) => {
+    try {
+      const apiOpinions = await fetchOpinionsFromAPI(eventId);
+      const event = events.find(e => e.id === eventId);
+      return (event?.opinions || 0) + apiOpinions.length;
+    } catch (error) {
+      console.error('Error getting total opinions:', error);
+      const event = events.find(e => e.id === eventId);
+      return event?.opinions || 0;
+    }
   }, [events]);
 
   // Memoized opinion submission handler
@@ -393,7 +426,20 @@ function Events() {
 
   // Enhanced Event Card component
   function EventCard({ event }) {
-    const totalOpinions = getTotalOpinionsForEvent(event.id);
+    const [totalOpinions, setTotalOpinions] = useState(event.opinions || 0);
+    
+    // Load opinions count when component mounts
+    useEffect(() => {
+      const loadOpinionsCount = async () => {
+        try {
+          const count = await getTotalOpinionsForEvent(event.id);
+          setTotalOpinions(count);
+        } catch (error) {
+          console.error('Error loading opinions count:', error);
+        }
+      };
+      loadOpinionsCount();
+    }, [event.id, getTotalOpinionsForEvent]);
     
     return (
       <div className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 overflow-hidden group hover-lift">

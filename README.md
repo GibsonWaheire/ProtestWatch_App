@@ -1,68 +1,84 @@
-# ProtestWatch
+# ProtestWatch App
 
-ProtestWatch is a React + Vite web application for tracking protest activity, reporting incidents, and viewing real-time statistics. The app features a dashboard with protest stats, recent events, trending hashtags, and allows users to report new incidents. 
+[Live Demo on Vercel](https://protest-watch-app.vercel.app/)
+
+A full-stack, real-time protest monitoring platform built with React (Vite), Express.js, and Neon/Postgres.
+
+---
 
 ## Features
+- Modern, responsive UI (React + Tailwind CSS)
+- Real-time event and opinion tracking
+- Express.js backend API
+- Neon/Postgres database integration
+- API endpoints for submitting and retrieving opinions
+- Deployed on Vercel
 
-- **Dashboard:** View a quick overview of protest activity, including total protests, recent arrests, active events, and total reports.
-- **Recent Events:** See a list of recent protest events and their statuses.
-- **Trending Hashtags:** Discover trending hashtags related to protest activity.
-- **Report an Incident:** Users can submit new protest reports (authentication currently disabled).
-- **Modern UI:** Built with React, Vite, Tailwind CSS, and React Router.
+---
+
+## Live Demo
+👉 [https://protest-watch-app.vercel.app/](https://protest-watch-app.vercel.app/)
+
+---
 
 ## Getting Started
 
-### Prerequisites
+### 1. Clone the repository
+```bash
+git clone https://github.com/GibsonWaheire/ProtestWatch_App.git
+cd ProtestWatch_App
+```
 
-- Node.js (v16 or higher recommended)
-- npm or yarn
+### 2. Install dependencies
+```bash
+npm install
+```
 
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone <your-repo-url>
-   cd my-new-project
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
-
-### Running the App
-
-Start the development server:
+### 3. Start the frontend (React)
 ```bash
 npm run dev
-# or
-yarn dev
-```
-Visit [http://localhost:5173](http://localhost:5173) in your browser.
-
-### Building for Production
-
-```bash
-npm run build
-# or
-yarn build
 ```
 
-### Linting
+### 4. Backend Setup
+- Go to the `backend/` folder:
+  ```bash
+  cd backend
+  npm install
+  ```
+- Create a `.env` file in `backend/` with your Neon/Postgres connection string:
+  ```env
+  DATABASE_URL=your_neon_connection_string
+  ```
+- Start the backend server:
+  ```bash
+  npm run dev
+  ```
 
-```bash
-npm run lint
-```
+### 5. Database Setup
+- In your Neon Console, run:
+  ```sql
+  CREATE TABLE IF NOT EXISTS opinions (
+    id SERIAL PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    comment TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  ```
 
-## Project Structure
+---
 
-- `src/components/` – React components (Dashboard, Navbar, Login, Register, Report, etc.)
-- `src/App.jsx` – Main app component and routing
+## API Endpoints
+- `GET /api/opinions/:eventId` — Get all opinions for an event
+- `POST /api/opinions` — Add a new opinion (JSON: `{ event_id, comment }`)
+
+---
+
+## Team
+- **Dashboard:** Gibson Waheire
+- **Events:** Martin Muthaura
+- **Reports:** Debra Wachira
+
+---
 
 ## License
-
-This project is licensed under the MIT License.
-
-Project updated
+MIT

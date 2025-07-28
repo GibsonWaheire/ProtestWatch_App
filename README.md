@@ -77,6 +77,7 @@ npm run dev
 - **Dashboard:** Gibson Waheire
 - **Events:** Martin Muthaura
 - **Reports:** Debra Wachira
+-              Clinton Mwangi
 
 ---
 
